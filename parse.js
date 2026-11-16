@@ -581,6 +581,45 @@ function parseInline(s, links) {
     return out.indexOf(AMP) === -1 ? out : out.split(AMP).join('&');
   }
 
+  // Find the `]` that would close the innermost open bracket, scanning
+  // forward from `from`. Skips backslash escapes, code spans (a backtick
+  // run and its same-length closer), and nested brackets. Returns the
+  // index of the `]`, or -1 when there is none.
+  function findBracketClose(from) {
+    let depth = 0;
+    let k = from;
+    while (k < n) {
+      const c = s[k];
+      if (c === '\\' && k + 1 < n && isAsciiPunct(s[k + 1])) { k += 2; continue; }
+      if (c === '`') {
+        let run = 0;
+        while (k + run < n && s[k + run] === '`') run++;
+        let q = k + run;
+        let found = -1;
+        while (q < n) {
+          if (s[q] === '`') {
+            let r2 = 0;
+            while (q + r2 < n && s[q + r2] === '`') r2++;
+            if (r2 === run) { found = q; break; }
+            q += r2;
+          } else q++;
+        }
+        if (found === -1) { k += run; continue; }
+        k = found + run;
+        continue;
+      }
+      if (c === '[') { depth++; k++; continue; }
+      if (c === ']') {
+        if (depth === 0) return k;
+        depth--;
+        k++;
+        continue;
+      }
+      k++;
+    }
+    return -1;
+  }
+
   // Would the innermost open bracket form a link if it closed at the
   // `]` at `closeIdx`? The code-span scanner uses this: a code span must
   // not swallow a `]` that closes a link (the link's text is re-lexed on
@@ -1026,10 +1065,18 @@ function parseInline(s, links) {
     // `[a https://example.com b](https://x.com)` the bare URL is link
     // text, not an autolink. But it IS recognised inside a deactivated
     // bracket (one that already holds a link, so the outer link cannot
-    // form) or a bracket whose content already holds a link: marked
-    // gates the autolink only on `inLink`, not on bracket depth, and a
-    // failed outer bracket leaves the bare URL as plain text to link.
-    if (!inLink && (brackets.length === 0 || !brackets[brackets.length - 1].active || brackets[brackets.length - 1].ch.some((nd) => nd.k === 6 || nd.k === 7)) && (ch === 'w' || ch === 'h' || ch === 'f' || ch === 'm' || ch === 'x' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
+    // form), inside a bracket whose content already holds a link, or
+    // inside a bracket that will form no link at all (its `]` leads
+    // nowhere): marked gates the autolink only on `inLink`, not on
+    // bracket depth, and a failed outer bracket leaves the bare URL as
+    // plain text to link.
+    const bracketFormsLink = () => {
+      if (brackets.length === 0) return false;
+      const close = findBracketClose(i);
+      if (close === -1) return false;
+      return bracketLinkAt(close);
+    };
+    if (!inLink && (brackets.length === 0 || !brackets[brackets.length - 1].active || brackets[brackets.length - 1].ch.some((nd) => nd.k === 6 || nd.k === 7) || !bracketFormsLink()) && (ch === 'w' || ch === 'h' || ch === 'f' || ch === 'm' || ch === 'x' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
       const prev = i === 0 ? '' : s[i - 1];
       if (i === 0 || !((prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') || (prev >= '0' && prev <= '9'))) {
         const ext = parseExtendedAutolink();
@@ -1704,8 +1751,19 @@ function buildBlocks(src, links) {
           off++;
           col++;
         }
-        if (off < line.length && line[off] === '\t') {
-          expandTabAt(off - gtOff);
+        // A tab in the leading whitespace after the marker's space is
+        // content: expand it on the quote's frame (its column is its
+        // distance from the `>`), and leave `off` on the first space so
+        // the content keeps all of them. Spaces between the marker's
+        // space and the tab are skipped over to find it.
+        {
+          let j = off;
+          while (j < line.length && line[j] === ' ') j++;
+          if (j < line.length && line[j] === '\t') {
+            const w = 4 - ((j - gtOff) % 4);
+            line = line.slice(0, j) + ' '.repeat(w) + line.slice(j + 1);
+            lines[i] = line;
+          }
         }
         return off;
       }
