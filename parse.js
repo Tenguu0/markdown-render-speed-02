@@ -581,6 +581,52 @@ function parseInline(s, links) {
     return out.indexOf(AMP) === -1 ? out : out.split(AMP).join('&');
   }
 
+  // Would the innermost open bracket form a link if it closed at the
+  // `]` at `closeIdx`? The code-span scanner uses this: a code span must
+  // not swallow a `]` that closes a link (the link's text is re-lexed on
+  // its own), but it may cross a `]` whose link does not form (cm-342,
+  // cm-525, cm-537: the code span forms there instead).
+  function bracketLinkAt(closeIdx) {
+    if (brackets.length === 0) return false;
+    const bracket = brackets[brackets.length - 1];
+    if (!bracket.active) return false;
+    if (!validLabel(s.slice(bracket.start, closeIdx))) return false;
+    const j = closeIdx + 1;
+    if (s[j] === '(') {
+      // Inline link: '(' + optional ws + dest + optional ws/title + ')'.
+      let k = skipInlineWs(j + 1);
+      const d = parseDest(k);
+      if (!d) return false;
+      k = skipInlineWs(d.next);
+      if (k < n && (s[k] === '"' || s[k] === "'" || s[k] === '(')) {
+        const t = parseTitle(k);
+        if (!t) return false;
+        k = skipInlineWs(t.next);
+      }
+      return k < n && s[k] === ')';
+    }
+    if (s[j] === '[') {
+      // Full or collapsed reference: [label] or [].
+      let k = j + 1;
+      let labelRaw = '';
+      let ok = false;
+      while (k < n && s[k] !== ']') {
+        const ch = s[k];
+        if (ch === '[' || ch === '\n') break;
+        if (ch === '\\' && k + 1 < n && isAsciiPunct(s[k + 1])) { labelRaw += s[k] + s[k + 1]; k += 2; continue; }
+        labelRaw += ch;
+        k++;
+      }
+      if (k < n && s[k] === ']') ok = true;
+      if (!ok) return false;
+      const label = labelRaw === '' ? normalizeLabel(s.slice(bracket.start, closeIdx)) : normalizeLabel(labelRaw);
+      return label !== '' && labelRaw.length <= 999 && links.has(label);
+    }
+    // Shortcut reference: the label is the bracket's own content.
+    const label = normalizeLabel(s.slice(bracket.start, closeIdx));
+    return label !== '' && links.has(label);
+  }
+
   // Try to resolve the bracket on top of the stack at the ']' at s[i].
   // Returns true when a link/image was formed (and i is advanced past what
   // the link consumed); the caller has already consumed the ']'.
@@ -814,6 +860,11 @@ function parseInline(s, links) {
       let k = i + run;
       let found = -1;
       while (k < n) {
+        // A `]` that closes a link-forming bracket stops the scan: the
+        // code span must not swallow it (the link's text is re-lexed on
+        // its own, so the backticks stay literal there). A `]` whose
+        // link does not form is crossed normally.
+        if (s[k] === ']' && bracketLinkAt(k)) break;
         if (s[k] === '`') {
           let r2 = 0;
           while (k + r2 < n && s[k + r2] === '`') r2++;
