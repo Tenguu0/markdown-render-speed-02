@@ -1682,20 +1682,30 @@ function buildBlocks(src, links) {
         const gtOff = off;
         off++;
         col++;
-        consumeOneSpace();
-        // A tab right after the marker's space is content, not a marker
-        // separator: expand it to spaces. Its width is counted in the
-        // quote's own frame — the `>` sits at column 0 there, so the
-        // tab's column is its distance from the `>` (a tab right after
-        // `> ` is at column 2 and becomes two spaces), not the absolute
-        // column (which also counts the parent list item's indent).
-        // The tab is expanded in place — `off` stays on the first
-        // space, so the content keeps all of them.
-        if (off < line.length && line[off] === '\t') {
-          const frameCol = off - gtOff;
+        // Consume one space after the marker. A tab here is the marker's
+        // space: expand it on the quote's frame — its column is its
+        // distance from the `>` (a tab right after `>` is at column 1
+        // and becomes three spaces) — then consume one of the spaces.
+        // A tab right after that space is content, not a separator:
+        // expand it on the quote's frame too (a tab after `> ` is at
+        // column 2 and becomes two spaces), and leave `off` on the
+        // first space so the content keeps all of them.
+        const expandTabAt = (frameCol) => {
           const w = 4 - (frameCol % 4);
           line = line.slice(0, off) + ' '.repeat(w) + line.slice(off + 1);
           lines[i] = line;
+          return w;
+        };
+        if (off < line.length && line[off] === ' ') {
+          off++;
+          col++;
+        } else if (off < line.length && line[off] === '\t') {
+          expandTabAt(off - gtOff);
+          off++;
+          col++;
+        }
+        if (off < line.length && line[off] === '\t') {
+          expandTabAt(off - gtOff);
         }
         return off;
       }
