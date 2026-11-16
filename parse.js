@@ -2203,7 +2203,8 @@ function buildBlocks(src, links) {
     if (content.length > 0 && content[content.length - 1] === '') content.pop();
     return { content, closed: false };
   }
-  // Consume lines for an indented code block (first line already stripped).
+  // Consume lines for an indented code block (the first line is already
+  // stripped of its 4-column indent).
   function consumeIndented(first) {
     const content = [first];
     while (i + 1 < n) {
@@ -2212,8 +2213,9 @@ function buildBlocks(src, links) {
       const depth = matchAll();
       if (depth < stack.length - 1) break;
       if (blankFrom(off)) {
-        // A whitespace-only line inside indented code contributes the line
-        // with the code indent stripped (so a 6-space line gives 2 spaces).
+        // A whitespace-only line inside indented code contributes the
+        // line with the code indent stripped (so a 6-space line gives
+        // 2 spaces of content).
         const saveOff = off, saveCol = col;
         if (consumeIndent(4)) content.push(line.slice(off));
         else { off = saveOff; col = saveCol; content.push(''); }
@@ -2233,6 +2235,7 @@ function buildBlocks(src, links) {
     while (content.length > 0 && content[content.length - 1] === '') content.pop();
     return content;
   }
+
   // Consume lines for an HTML block. `endRe` ends types 1-5; types 6-7 end
   // at a blank line. Returns the raw lines plus whether the raw text has
   // no trailing newline: the block ended at a blank line, at a container
@@ -2289,14 +2292,14 @@ function buildBlocks(src, links) {
     }
     return { content, noTrailingNL };
   }
-  // Consume table rows after the delimiter. Rows run until a blank line or
-  // a line that starts a new block. A line holding only spaces ends the
-  // table, but a line holding a tab counts as a (whitespace) row: marked
-  // turns it into a row of empty cells and keeps swallowing following
-  // lines as rows.
+  // Consume table rows after the delimiter. Rows run until a blank line
+  // or a line that starts a new block. A line holding only spaces ends
+  // the table, but a line holding a tab counts as a (whitespace) row:
+  // marked turns it into a row of empty cells and keeps swallowing
+  // following lines as rows.
   function consumeTableRows() {
     const rows = [];
-    const tableBlank = () => {
+    const spacesOnly = () => {
       for (let k = off; k < line.length; k++) if (line[k] !== ' ') return false;
       return true;
     };
@@ -2305,13 +2308,13 @@ function buildBlocks(src, links) {
       setLine(next);
       const depth = matchAll();
       if (depth < stack.length - 1) {
-        if (tableBlank()) break;
+        if (spacesOnly()) break;
         if (startsNewBlock(off)) break;
         rows.push(line.slice(off));
         i = next;
         continue;
       }
-      if (tableBlank()) break;
+      if (spacesOnly()) break;
       if (startsNewBlock(off)) break;
       rows.push(line.slice(off));
       i = next;
@@ -2319,11 +2322,11 @@ function buildBlocks(src, links) {
     return rows;
   }
 
-  // Create a table from the open paragraph `para` and the delimiter at the
-  // current line. The paragraph's last line is the header; earlier lines
-  // become a paragraph of their own (if any). Returns false when the
-  // delimiter's cell count differs from the header's: then it is not a
-  // table at all and the line stays paragraph text.
+  // Create a table from the open paragraph `para` and the delimiter at
+  // the current line. The paragraph's last line is the header; earlier
+  // lines become a paragraph of their own (if any). Returns false when
+  // the delimiter's cell count differs from the header's: then it is not
+  // a table at all and the line stays paragraph text.
   function makeTable(para, align) {
     const paraLines = para.lines;
     const headerLine = paraLines[paraLines.length - 1];
