@@ -1628,9 +1628,24 @@ function buildBlocks(src, links) {
       const saveOff = off, saveCol = col;
       skipWs(3);
       if (off < line.length && line[off] === '>') {
+        const gtOff = off;
         off++;
         col++;
         consumeOneSpace();
+        // A tab right after the marker's space is content, not a marker
+        // separator: expand it to spaces. Its width is counted in the
+        // quote's own frame — the `>` sits at column 0 there, so the
+        // tab's column is its distance from the `>` (a tab right after
+        // `> ` is at column 2 and becomes two spaces), not the absolute
+        // column (which also counts the parent list item's indent).
+        // The tab is expanded in place — `off` stays on the first
+        // space, so the content keeps all of them.
+        if (off < line.length && line[off] === '\t') {
+          const frameCol = off - gtOff;
+          const w = 4 - (frameCol % 4);
+          line = line.slice(0, off) + ' '.repeat(w) + line.slice(off + 1);
+          lines[i] = line;
+        }
         return off;
       }
       off = saveOff;
@@ -2699,6 +2714,15 @@ function buildBlocks(src, links) {
     }
     // Paragraph.
     if (parentNode.t === 'para') {
+      // A continuation line inside a list item loses four columns of
+      // indent beyond the item's content indent (marked's indented-code
+      // compensation): `- a` + `      * c` gives `* c`, not `    * c`.
+      // Lines indented by fewer than four extra columns keep their spaces,
+      // and so do continuations at the top level or inside a quote.
+      const par = stack[stack.length - 2];
+      if (par && par.t === 'item' && leadingWsCols(off) >= 4) {
+        consumeIndent(4);
+      }
       parentNode.lines.push(line.slice(off));
       parentNode.lastLazy = false;
       parentNode.end = i;
