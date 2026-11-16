@@ -1,26 +1,29 @@
-// Driver for the markdown-render-speed-02 entry.
-// The harness runs `node /bot/main.ts` on Node 22. It feeds every case
-// through parse() from parse.js, one case at a time, and collects the
-// HTML strings in the same order the cases arrived in. Each case is
-// rendered alone: parse() keeps no state between calls, so nothing leaks
-// from one case into the next.
+// Entry driver for markdown-render-speed-02.
+//
+// The scorer runs this file with Node 22. It hands us a directory of
+// cases and expects one HTML string per case, in the same order, written
+// out as a JSON array. Every case goes through parse() on its own: the
+// renderer keeps no state from one call to the next, so no result can
+// leak into another case and no cache can make a later case cheaper.
+//
+// Input : $MAKEFUN_INPUT_DIR/cases.json  (default /input/cases.json)
+//         a JSON array of { id, markdown } objects.
+// Output: $MAKEFUN_OUTPUT_DIR/html.json  (default /output/html.json)
+//         a JSON array of HTML strings, same order as the input.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from './parse.js';
 
-const inDir = process.env.MAKEFUN_INPUT_DIR ?? '/input';
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const inputDir = process.env.MAKEFUN_INPUT_DIR ?? '/input';
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-const raw = readFileSync(join(inDir, 'cases.json'), 'utf8');
-const cases = JSON.parse(raw);
+const cases = JSON.parse(readFileSync(join(inputDir, 'cases.json'), 'utf8'));
 
-// Render in order; index assignment (not push) keeps the output aligned
-// with the input even if a case renders to an empty string.
-const rendered = new Array(cases.length);
-for (let n = 0; n < cases.length; n++) {
-  rendered[n] = parse(cases[n].markdown);
+const html = new Array(cases.length);
+for (let i = 0; i < cases.length; i++) {
+  html[i] = parse(cases[i].markdown);
 }
 
-mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, 'html.json'), JSON.stringify(rendered));
+mkdirSync(outputDir, { recursive: true });
+writeFileSync(join(outputDir, 'html.json'), JSON.stringify(html));

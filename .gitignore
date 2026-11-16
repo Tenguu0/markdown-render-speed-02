@@ -1,4 +1,4 @@
-# Build / harness output and local verification scratch (never committed).
+# Harness output and local verification scratch — never committed.
 out/
 node_modules/
 scratch/
